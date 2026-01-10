@@ -137,12 +137,25 @@ function updateBingoOverlays() {
     }
 }
 
+// Preload all champion tile images
+function preloadChampionImages() {
+    if (championKeys.length === 0) return;
+    
+    championKeys.forEach((championKey) => {
+        const img = new Image();
+        img.src = `data/tiles/${championKey}.png`;
+    });
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('data/champions.json');
         championsData = await response.json();
         championKeys = Object.keys(championsData);
+        
+        // Preload all champion tile images
+        preloadChampionImages();
         
         // Set up button click handler
         const generateButton = document.getElementById('generate-bingo-button');
