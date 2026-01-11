@@ -36,19 +36,12 @@ function resetBingoState() {
     saveBingoState();
 }
 
-function updateTileState(tileIndex, type) {
+function updateTileState(tileIndex) {
     if (!bingoState.tiles[tileIndex]) {
-        bingoState.tiles[tileIndex] = { losses: 0, completed: false };
+        bingoState.tiles[tileIndex] = { completed: false };
     }
     
-    if (type === 'win') {
-        bingoState.tiles[tileIndex].completed = true;
-    } else if (type === 'loss') {
-        bingoState.tiles[tileIndex].losses += 1;
-        if (bingoState.tiles[tileIndex].losses >= 2) {
-            bingoState.tiles[tileIndex].completed = true;
-        }
-    }
+    bingoState.tiles[tileIndex].completed = true;
     
     saveBingoState();
     updateTileUI(tileIndex);
@@ -56,7 +49,7 @@ function updateTileState(tileIndex, type) {
 }
 
 function resetTileState(tileIndex) {
-    bingoState.tiles[tileIndex] = { losses: 0, completed: false };
+    bingoState.tiles[tileIndex] = { completed: false };
     saveBingoState();
     updateTileUI(tileIndex);
     updateBingoOverlays();
@@ -186,9 +179,8 @@ function updateTileUI(tileIndex) {
     const tile = document.querySelector(`[data-tile-index="${tileIndex}"]`);
     if (!tile) return;
     
-    const tileState = bingoState.tiles[tileIndex] || { losses: 0, completed: false };
+    const tileState = bingoState.tiles[tileIndex] || { completed: false };
     const isCompleted = tileState.completed;
-    const losses = tileState.losses;
     
     // Update completed state
     if (isCompleted) {
@@ -215,31 +207,6 @@ function updateTileUI(tileIndex) {
         if (nameLabel) nameLabel.style.display = 'block';
         const stampContainer = tile.querySelector('.completion-stamp-container');
         if (stampContainer) stampContainer.style.display = 'none';
-    }
-    
-    // Update loss indicator
-    const lossIndicator = tile.querySelector('.loss-indicator');
-    if (losses >= 1 && !isCompleted) {
-        if (!lossIndicator) {
-            const indicator = document.createElement('div');
-            indicator.className = 'loss-indicator';
-            tile.appendChild(indicator);
-        } else {
-            lossIndicator.style.display = 'block';
-        }
-    } else if (lossIndicator) {
-        lossIndicator.style.display = 'none';
-    }
-    
-    // Disable buttons if completed
-    const winButton = tile.querySelector('.win-button');
-    const lossButton = tile.querySelector('.loss-button');
-    if (isCompleted) {
-        if (winButton) winButton.disabled = true;
-        if (lossButton) lossButton.disabled = true;
-    } else {
-        if (winButton) winButton.disabled = false;
-        if (lossButton) lossButton.disabled = false;
     }
 }
 
@@ -269,7 +236,7 @@ function renderBingoCard(champions, useSavedState = false) {
             bingoState.champions = champions;
             bingoState.tiles = {};
             for (let i = 0; i < 25; i++) {
-                bingoState.tiles[i] = { losses: 0, completed: false };
+                bingoState.tiles[i] = { completed: false };
             }
         }
     } else {
@@ -278,7 +245,7 @@ function renderBingoCard(champions, useSavedState = false) {
         bingoState.champions = champions;
         // Initialize empty state for all tiles
         for (let i = 0; i < 25; i++) {
-            bingoState.tiles[i] = { losses: 0, completed: false };
+            bingoState.tiles[i] = { completed: false };
         }
     }
     
@@ -304,43 +271,6 @@ function renderBingoCard(champions, useSavedState = false) {
         nameLabel.className = 'champion-name';
         nameLabel.textContent = championsData[championKey];
         
-        // Hover overlay
-        const overlay = document.createElement('div');
-        overlay.className = 'tile-overlay';
-        
-        // Buttons container
-        const buttonsContainer = document.createElement('div');
-        buttonsContainer.className = 'tile-buttons';
-        
-        // Win button
-        const winButton = document.createElement('button');
-        winButton.className = 'win-button';
-        winButton.textContent = 'W';
-        winButton.setAttribute('aria-label', 'Mark as win');
-        winButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            updateTileState(index, 'win');
-        });
-        
-        // Loss button
-        const lossButton = document.createElement('button');
-        lossButton.className = 'loss-button';
-        lossButton.textContent = 'L';
-        lossButton.setAttribute('aria-label', 'Mark as loss');
-        lossButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            updateTileState(index, 'loss');
-        });
-        
-        buttonsContainer.appendChild(winButton);
-        buttonsContainer.appendChild(lossButton);
-        overlay.appendChild(buttonsContainer);
-        
-        // Loss indicator (initially hidden)
-        const lossIndicator = document.createElement('div');
-        lossIndicator.className = 'loss-indicator';
-        lossIndicator.style.display = 'none';
-        
         // Completion stamp container (initially hidden)
         const completionStampContainer = document.createElement('div');
         completionStampContainer.className = 'completion-stamp-container';
@@ -351,20 +281,17 @@ function renderBingoCard(champions, useSavedState = false) {
         completionStamp.alt = 'Completed';
         completionStampContainer.appendChild(completionStamp);
         
-        // Add click handler to reset completed tiles
-        tile.addEventListener('click', (e) => {
-            // Only reset if tile is completed and click is not on buttons or overlay
-            if (isTileCompleted(index) && 
-                !e.target.closest('.tile-buttons') && 
-                !e.target.closest('.tile-overlay')) {
+        // Add click handler to mark win or reset completed tiles
+        tile.addEventListener('click', () => {
+            if (isTileCompleted(index)) {
                 resetTileState(index);
+            } else {
+                updateTileState(index);
             }
         });
         
         tile.appendChild(img);
         tile.appendChild(nameLabel);
-        tile.appendChild(overlay);
-        tile.appendChild(lossIndicator);
         tile.appendChild(completionStampContainer);
         gridContainer.appendChild(tile);
         
