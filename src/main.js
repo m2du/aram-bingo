@@ -7,33 +7,12 @@ let bingoState = {
 };
 
 // State management functions
-function saveBingoState() {
-    try {
-        localStorage.setItem('aram-bingo-state', JSON.stringify(bingoState));
-    } catch (error) {
-        console.error('Error saving bingo state:', error);
-    }
-}
-
-function loadBingoState() {
-    try {
-        const saved = localStorage.getItem('aram-bingo-state');
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            return parsed;
-        }
-    } catch (error) {
-        console.error('Error loading bingo state:', error);
-    }
-    return null;
-}
-
 function resetBingoState() {
     bingoState = {
         champions: [],
         tiles: {}
     };
-    saveBingoState();
+    saveBingoState(bingoState);
 }
 
 function updateTileState(tileIndex) {
@@ -43,14 +22,14 @@ function updateTileState(tileIndex) {
     
     bingoState.tiles[tileIndex].completed = true;
     
-    saveBingoState();
+    saveBingoState(bingoState);
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
 
 function resetTileState(tileIndex) {
     bingoState.tiles[tileIndex] = { completed: false };
-    saveBingoState();
+    saveBingoState(bingoState);
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
@@ -300,7 +279,7 @@ function renderBingoCard(champions, useSavedState = false) {
     });
     
     // Save initial state
-    saveBingoState();
+    saveBingoState(bingoState);
     
     // Update bingo overlays after all tiles are rendered
     updateBingoOverlays();
