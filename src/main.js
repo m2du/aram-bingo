@@ -1,6 +1,12 @@
 // Fetch champions data
 let championsData = null;
 let championKeys = [];
+
+// Expose championKeys globally for migration
+if (typeof window !== 'undefined') {
+    window.championKeys = championKeys;
+    window.championsData = championsData;
+}
 let bingoState = {
     champions: [],
     tiles: {}
@@ -15,27 +21,26 @@ function resetBingoState() {
     saveBingoState(bingoState);
 }
 
-function updateTileState(tileIndex) {
-    if (!bingoState.tiles[tileIndex]) {
-        bingoState.tiles[tileIndex] = { completed: false };
-    }
-    
-    bingoState.tiles[tileIndex].completed = true;
-    
+function updateTileState(tileIndex, championName) {
+    bingoState.tiles[tileIndex] = championName;
     saveBingoState(bingoState);
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
 
 function resetTileState(tileIndex) {
-    bingoState.tiles[tileIndex] = { completed: false };
+    delete bingoState.tiles[tileIndex];
     saveBingoState(bingoState);
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
 
 function isTileCompleted(tileIndex) {
-    return bingoState.tiles[tileIndex]?.completed === true;
+    return bingoState.tiles[tileIndex] !== undefined;
+}
+
+function getCompletedChampion(tileIndex) {
+    return bingoState.tiles[tileIndex];
 }
 
 // Get all bingo lines (rows, columns, diagonals)
@@ -126,6 +131,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         championsData = await response.json();
         championKeys = Object.keys(championsData);
         
+        // Update global references for migration
+        if (typeof window !== 'undefined') {
+            window.championKeys = championKeys;
+            window.championsData = championsData;
+        }
+        
         // Preload all champion tile images
         preloadChampionImages();
         
@@ -158,41 +169,64 @@ function updateTileUI(tileIndex) {
     const tile = document.querySelector(`[data-tile-index="${tileIndex}"]`);
     if (!tile) return;
     
-    const tileState = bingoState.tiles[tileIndex] || { completed: false };
-    const isCompleted = tileState.completed;
+    const markedChampion = getCompletedChampion(tileIndex);
+    const isCompleted = markedChampion !== undefined;
+    
+    const topHalf = tile.querySelector('.champion-top');
+    const bottomHalf = tile.querySelector('.champion-bottom');
+    const stampContainer = tile.querySelector('.completion-stamp-container');
     
     // Update completed state
     if (isCompleted) {
+        tile.classList.add('tile-marked');
         tile.classList.add('tile-completed');
-        const nameLabel = tile.querySelector('.champion-name');
-        if (nameLabel) nameLabel.style.display = 'none';
+        tile.setAttribute('data-marked-champion', markedChampion);
         
-        // Show completion stamp if not already present
-        let stampContainer = tile.querySelector('.completion-stamp-container');
-        if (!stampContainer) {
-            stampContainer = document.createElement('div');
-            stampContainer.className = 'completion-stamp-container';
-            const stamp = document.createElement('img');
-            stamp.className = 'completion-stamp';
-            stamp.src = 'data/lol_icon.ico';
-            stamp.alt = 'Completed';
-            stampContainer.appendChild(stamp);
-            tile.appendChild(stampContainer);
+        // Expand the marked champion, hide the other
+        if (topHalf && topHalf.getAttribute('data-champion') === markedChampion) {
+            topHalf.classList.add('champion-expanded');
+            if (bottomHalf) bottomHalf.classList.add('champion-hidden');
+        } else if (bottomHalf && bottomHalf.getAttribute('data-champion') === markedChampion) {
+            bottomHalf.classList.add('champion-expanded');
+            if (topHalf) topHalf.classList.add('champion-hidden');
         }
-        stampContainer.style.display = 'block';
+        
+        // Show completion stamp
+        if (stampContainer) {
+            stampContainer.style.display = 'block';
+        }
     } else {
+        tile.classList.remove('tile-marked');
         tile.classList.remove('tile-completed');
-        const nameLabel = tile.querySelector('.champion-name');
-        if (nameLabel) nameLabel.style.display = 'block';
-        const stampContainer = tile.querySelector('.completion-stamp-container');
-        if (stampContainer) stampContainer.style.display = 'none';
+        tile.removeAttribute('data-marked-champion');
+        
+        // Reset both halves to normal state
+        if (topHalf) {
+            topHalf.classList.remove('champion-expanded');
+            topHalf.classList.remove('champion-hidden');
+        }
+        if (bottomHalf) {
+            bottomHalf.classList.remove('champion-expanded');
+            bottomHalf.classList.remove('champion-hidden');
+        }
+        
+        // Hide completion stamp
+        if (stampContainer) {
+            stampContainer.style.display = 'none';
+        }
     }
 }
 
-// Render bingo card from champions array
-function renderBingoCard(champions, useSavedState = false) {
-    if (!champions || champions.length !== 25) {
-        console.error('Invalid champions array');
+// Render bingo card from champions pairs array
+function renderBingoCard(championPairs, useSavedState = false) {
+    if (!championPairs || championPairs.length !== 25) {
+        console.error('Invalid champions array - expected 25 pairs');
+        return;
+    }
+    
+    // Validate pairs structure
+    if (!championPairs.every(pair => Array.isArray(pair) && pair.length === 2)) {
+        console.error('Invalid champions format - expected array of pairs');
         return;
     }
     
@@ -207,48 +241,62 @@ function renderBingoCard(champions, useSavedState = false) {
         if (savedState && 
             savedState.champions && 
             savedState.champions.length === 25 &&
-            JSON.stringify(savedState.champions) === JSON.stringify(champions)) {
+            JSON.stringify(savedState.champions) === JSON.stringify(championPairs)) {
             // Champions match, use saved state
             bingoState = savedState;
         } else {
             // Champions don't match or no saved state, initialize new state
-            bingoState.champions = champions;
+            bingoState.champions = championPairs;
             bingoState.tiles = {};
-            for (let i = 0; i < 25; i++) {
-                bingoState.tiles[i] = { completed: false };
-            }
         }
     } else {
         // New card - reset state
         resetBingoState();
-        bingoState.champions = champions;
-        // Initialize empty state for all tiles
-        for (let i = 0; i < 25; i++) {
-            bingoState.tiles[i] = { completed: false };
-        }
+        bingoState.champions = championPairs;
+        bingoState.tiles = {};
     }
     
     // Get grid container
     const gridContainer = document.getElementById('bingo-grid');
     gridContainer.innerHTML = ''; // Clear any existing content
     
-    // Create 5x5 grid of champion tiles
-    champions.forEach((championKey, index) => {
+    // Create 5x5 grid of champion tiles with two champions each
+    championPairs.forEach((pair, index) => {
+        const [champion1, champion2] = pair;
         const tile = document.createElement('div');
         tile.className = 'champion-tile';
         tile.setAttribute('data-tile-index', index);
-        tile.setAttribute('data-champion-key', championKey);
         
-        // Champion image
-        const img = document.createElement('img');
-        img.src = `data/tiles/${championKey}.png`;
-        img.alt = championsData[championKey];
-        img.loading = 'lazy';
+        // Track currently hovered champion based on mouse position
+        let hoveredChampion = null;
         
-        // Champion name
-        const nameLabel = document.createElement('div');
-        nameLabel.className = 'champion-name';
-        nameLabel.textContent = championsData[championKey];
+        // Create top half (champion 1) - top triangle
+        const topHalf = document.createElement('div');
+        topHalf.className = 'champion-half champion-top';
+        topHalf.setAttribute('data-champion', champion1);
+        const topImg = document.createElement('img');
+        topImg.src = `data/tiles/${champion1}.png`;
+        topImg.alt = championsData[champion1];
+        topImg.loading = 'lazy';
+        const topName = document.createElement('div');
+        topName.className = 'champion-name';
+        topName.textContent = championsData[champion1];
+        topHalf.appendChild(topImg);
+        topHalf.appendChild(topName);
+        
+        // Create bottom half (champion 2) - bottom triangle
+        const bottomHalf = document.createElement('div');
+        bottomHalf.className = 'champion-half champion-bottom';
+        bottomHalf.setAttribute('data-champion', champion2);
+        const bottomImg = document.createElement('img');
+        bottomImg.src = `data/tiles/${champion2}.png`;
+        bottomImg.alt = championsData[champion2];
+        bottomImg.loading = 'lazy';
+        const bottomName = document.createElement('div');
+        bottomName.className = 'champion-name';
+        bottomName.textContent = championsData[champion2];
+        bottomHalf.appendChild(bottomImg);
+        bottomHalf.appendChild(bottomName);
         
         // Completion stamp container (initially hidden)
         const completionStampContainer = document.createElement('div');
@@ -260,17 +308,68 @@ function renderBingoCard(champions, useSavedState = false) {
         completionStamp.alt = 'Completed';
         completionStampContainer.appendChild(completionStamp);
         
-        // Add click handler to mark win or reset completed tiles
-        tile.addEventListener('click', () => {
-            if (isTileCompleted(index)) {
-                resetTileState(index);
-            } else {
-                updateTileState(index);
+        // Position-based hover handler on the tile
+        tile.addEventListener('mousemove', (e) => {
+            if (!isTileCompleted(index)) {
+                const rect = tile.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Determine which triangle based on position
+                // Diagonal from bottom-left (0, 100%) to top-right (100%, 0)
+                // Equation: y = height - (height/width) * x
+                // Or: y/height + x/width = 1
+                // If y/height + x/width < 1, we're in the top triangle
+                // If y/height + x/width > 1, we're in the bottom triangle
+                const relativeX = x / rect.width;
+                const relativeY = y / rect.height;
+                
+                // Check if we're in top triangle (above diagonal)
+                // Top triangle: y/height + x/width < 1
+                const isTopTriangle = relativeY + relativeX < 1;
+                
+                const newHoveredChampion = isTopTriangle ? champion1 : champion2;
+                
+                if (hoveredChampion !== newHoveredChampion) {
+                    hoveredChampion = newHoveredChampion;
+                    tile.setAttribute('data-hovered', hoveredChampion);
+                    
+                    // Update classes: expanded for hovered, hidden for non-hovered
+                    if (hoveredChampion === champion1) {
+                        topHalf.classList.add('champion-expanded');
+                        topHalf.classList.remove('champion-hidden');
+                        bottomHalf.classList.add('champion-hidden');
+                        bottomHalf.classList.remove('champion-expanded');
+                    } else {
+                        bottomHalf.classList.add('champion-expanded');
+                        bottomHalf.classList.remove('champion-hidden');
+                        topHalf.classList.add('champion-hidden');
+                        topHalf.classList.remove('champion-expanded');
+                    }
+                }
             }
         });
         
-        tile.appendChild(img);
-        tile.appendChild(nameLabel);
+        tile.addEventListener('mouseleave', () => {
+            if (!isTileCompleted(index)) {
+                hoveredChampion = null;
+                tile.removeAttribute('data-hovered');
+                topHalf.classList.remove('champion-expanded', 'champion-hidden');
+                bottomHalf.classList.remove('champion-expanded', 'champion-hidden');
+            }
+        });
+        
+        // Click handler to mark/unmark tile
+        tile.addEventListener('click', () => {
+            if (isTileCompleted(index)) {
+                resetTileState(index);
+            } else if (hoveredChampion) {
+                updateTileState(index, hoveredChampion);
+            }
+        });
+        
+        tile.appendChild(topHalf);
+        tile.appendChild(bottomHalf);
         tile.appendChild(completionStampContainer);
         gridContainer.appendChild(tile);
         
@@ -292,19 +391,23 @@ function renderBingoCard(champions, useSavedState = false) {
     generateButton.textContent = 'New Bingo Card';
 }
 
-// Generate new bingo card with 25 random champions
+// Generate new bingo card with 25 pairs of random champions
 function generateBingoCard() {
     if (championKeys.length === 0) {
         console.error('Champions data not loaded');
         return;
     }
     
-    // Shuffle and take first 25 champions
+    // Shuffle and take first 50 champions, then pair them
     const shuffled = shuffleArray(championKeys);
-    const selectedChampions = shuffled.slice(0, 25);
+    const selectedChampions = shuffled.slice(0, 50);
+    const championPairs = [];
+    for (let i = 0; i < 25; i++) {
+        championPairs.push([selectedChampions[i * 2], selectedChampions[i * 2 + 1]]);
+    }
     
     // Render with new state (not using saved state)
-    renderBingoCard(selectedChampions, false);
+    renderBingoCard(championPairs, false);
     
     // Scroll to top of grid for better UX
     const gridContainer = document.getElementById('bingo-grid');
@@ -317,16 +420,24 @@ function loadBingoCardFromState() {
     if (savedState && 
         savedState.champions && 
         savedState.champions.length === 25) {
-        // Validate all champions exist in championsData
-        const allChampionsValid = savedState.champions.every(champ => 
-            championKeys.includes(champ) && championsData[champ]
-        );
+        // Check if it's pairs format (new) or single champions (old - will be migrated)
+        const isPairsFormat = Array.isArray(savedState.champions[0]) && savedState.champions[0].length === 2;
         
-        if (allChampionsValid) {
-            // Render with saved state
-            renderBingoCard(savedState.champions, true);
-            return true;
+        if (isPairsFormat) {
+            // Validate all champions in pairs exist in championsData
+            const allChampionsValid = savedState.champions.every(pair => 
+                Array.isArray(pair) && 
+                pair.length === 2 &&
+                pair.every(champ => championKeys.includes(champ) && championsData[champ])
+            );
+            
+            if (allChampionsValid) {
+                // Render with saved state
+                renderBingoCard(savedState.champions, true);
+                return true;
+            }
         }
+        // If not pairs format, migration will handle it
     }
     return false;
 }

@@ -138,10 +138,52 @@ body:has(#bingo-grid:not(.hidden)) #generate-bingo-button:hover {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* White fade along diagonal - creates a 4px white fade line from bottom-left to top-right */
+.champion-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        135deg,
+        transparent calc(50% - 5px),
+        rgba(255, 255, 255, 1) calc(50% - 2px),
+        rgba(255, 255, 255, 1) calc(50% + 2px),
+        transparent calc(50% + 5px)
+    );
+    pointer-events: none;
+    z-index: 3;
+    mix-blend-mode: overlay;
+}
+
 .champion-tile:hover {
     transform: scale(1.05);
     box-shadow: 0 4px 12px var(--color-tile-hover-glow);
-    z-index: 1;
+}
+
+.champion-tile:hover::before,
+.champion-tile.tile-marked::before {
+    opacity: 0;
+}
+
+/* Expanded state - applies to both hover and marked states */
+.champion-half.champion-expanded {
+    opacity: 1;
+    transition: clip-path 0.2s ease, opacity 0.2s linear;
+}
+
+/* Hidden state - applies to non-expanded champion */
+.champion-half.champion-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transition: clip-path 0.2s ease, opacity 0.2s linear;
+}
+
+/* Show name when expanded */
+.champion-half.champion-expanded .champion-name {
+    opacity: 1;
 }
 
 .champion-tile img {
@@ -149,6 +191,51 @@ body:has(#bingo-grid:not(.hidden)) #generate-bingo-button:hover {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+/* Champion halves for diagonal split */
+.champion-half {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.champion-half img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.champion-top {
+    top: 0;
+    left: 0;
+    /* Top triangle: bottom-left to top-right diagonal */
+    clip-path: polygon(0 100%, 0 0, 100% 0);
+}
+
+.champion-top.champion-expanded {
+    clip-path: polygon(0 100%, 100% 100%, 100% 0, 0 0);
+}
+
+.champion-top.champion-hidden {
+    z-index: 1;
+    clip-path: polygon(0 0, 0 0, 0 0);
+}
+
+.champion-bottom {
+    bottom: 0;
+    right: 0;
+    /* Bottom triangle: bottom-left to top-right diagonal */
+    clip-path: polygon(0 100%, 100% 100%, 100% 0);
+}
+
+.champion-bottom.champion-expanded {
+    clip-path: polygon(0 100%, 0 0, 100% 0, 100% 100%);
+}
+
+.champion-bottom.champion-hidden {
+    clip-path: polygon(100% 100%, 100% 100%, 100% 100%);
 }
 
 .champion-tile .champion-name {
@@ -162,6 +249,10 @@ body:has(#bingo-grid:not(.hidden)) #generate-bingo-button:hover {
     font-size: 0.75rem;
     text-align: center;
     font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    z-index: 2;
 }
 
 .completion-stamp-container {
