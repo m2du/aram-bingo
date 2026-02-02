@@ -12,25 +12,38 @@ let bingoState = {
     tiles: {}
 };
 
+// Multi-board state tracking
+let currentBoardId = null; // null for unsaved boards, string ID for saved boards
+let isNewBoard = false; // true for unsaved boards
+
 // State management functions
 function resetBingoState() {
     bingoState = {
         champions: [],
         tiles: {}
     };
-    saveBingoState(bingoState);
 }
 
 function updateTileState(tileIndex, championName) {
     bingoState.tiles[tileIndex] = championName;
-    saveBingoState(bingoState);
+    
+    // Save to current board (auto-save for saved boards, don't save for new boards)
+    if (!isNewBoard && currentBoardId) {
+        saveCurrentBoard();
+    }
+    
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
 
 function resetTileState(tileIndex) {
     delete bingoState.tiles[tileIndex];
-    saveBingoState(bingoState);
+    
+    // Save to current board (auto-save for saved boards, don't save for new boards)
+    if (!isNewBoard && currentBoardId) {
+        saveCurrentBoard();
+    }
+    
     updateTileUI(tileIndex);
     updateBingoOverlays();
 }
@@ -124,6 +137,230 @@ function preloadChampionImages() {
     });
 }
 
+// Board management functions
+function saveCurrentBoard() {
+    if (!bingoState.champions || bingoState.champions.length !== 25) {
+        console.error('Cannot save: invalid board state');
+        return;
+    }
+    
+    const board = {
+        id: currentBoardId || generateId(),
+        name: document.getElementById('board-name')?.textContent || 'Unnamed Card',
+        state: {
+            champions: bingoState.champions,
+            tiles: { ...bingoState.tiles }
+        }
+    };
+    
+    saveBingoBoard(board);
+    currentBoardId = board.id;
+    isNewBoard = false;
+    updateUIForBoardState();
+    renderBoardsDrawer();
+    
+    // Show drawer if it was hidden (first board saved)
+    const drawer = document.getElementById('boards-drawer');
+    if (drawer) {
+        drawer.classList.remove('hidden');
+    }
+}
+
+function deleteCurrentBoard() {
+    if (!currentBoardId) {
+        return;
+    }
+    
+    const confirmed = confirm('Are you sure? This action is permanent and cannot be undone.');
+    if (!confirmed) {
+        return;
+    }
+    
+    deleteBingoBoard(currentBoardId);
+    
+    // Load another board or show empty state
+    const boards = loadAllBoards();
+    if (boards.length > 0) {
+        switchToBoard(boards[0].id);
+    } else {
+        // No boards left, show empty state
+        currentBoardId = null;
+        isNewBoard = false;
+        bingoState = { champions: [], tiles: {} };
+        document.getElementById('bingo-grid').classList.add('hidden');
+        document.getElementById('board-name-container').classList.add('hidden');
+        document.getElementById('save-board-button').classList.add('hidden');
+        document.getElementById('delete-board-button').classList.add('hidden');
+        document.getElementById('generate-bingo-button').classList.remove('hidden');
+        document.getElementById('boards-drawer').classList.add('hidden');
+    }
+    
+    renderBoardsDrawer();
+}
+
+function switchToBoard(boardId) {
+    const board = loadBingoBoard(boardId);
+    if (!board || !board.state) {
+        console.error('Board not found:', boardId);
+        return;
+    }
+    
+    currentBoardId = boardId;
+    isNewBoard = false;
+    bingoState = {
+        champions: [...board.state.champions],
+        tiles: { ...board.state.tiles }
+    };
+    
+    renderBingoCard(bingoState.champions, true);
+    renderBoardName(board.name);
+    updateUIForBoardState();
+    renderBoardsDrawer(); // Update highlighting in drawer
+}
+
+// UI render functions
+function renderBoardName(name) {
+    const container = document.getElementById('board-name-container');
+    const nameElement = document.getElementById('board-name');
+    const editButton = document.getElementById('edit-board-name-button');
+    const editContainer = document.getElementById('board-name-edit-container');
+    const inputElement = document.getElementById('board-name-input');
+    
+    if (nameElement) {
+        nameElement.textContent = name;
+        nameElement.classList.remove('hidden');
+    }
+    
+    if (editButton) {
+        editButton.classList.remove('hidden');
+    }
+    
+    if (editContainer) {
+        editContainer.classList.add('hidden');
+    }
+    
+    if (inputElement) {
+        inputElement.value = name;
+    }
+    
+    if (container) {
+        container.classList.remove('hidden');
+    }
+}
+
+function showBoardNameEditor() {
+    const nameElement = document.getElementById('board-name');
+    const editButton = document.getElementById('edit-board-name-button');
+    const editContainer = document.getElementById('board-name-edit-container');
+    const inputElement = document.getElementById('board-name-input');
+    
+    if (nameElement && editContainer && inputElement) {
+        // Hide name and edit button, show input container
+        nameElement.classList.add('hidden');
+        if (editButton) editButton.classList.add('hidden');
+        editContainer.classList.remove('hidden');
+        inputElement.value = nameElement.textContent;
+        inputElement.focus();
+        inputElement.select();
+    }
+}
+
+function saveBoardName() {
+    const nameElement = document.getElementById('board-name');
+    const editButton = document.getElementById('edit-board-name-button');
+    const editContainer = document.getElementById('board-name-edit-container');
+    const inputElement = document.getElementById('board-name-input');
+    
+    if (!inputElement || !nameElement || !editContainer) return;
+    
+    const newName = inputElement.value.trim() || 'Unnamed Card';
+    
+    nameElement.textContent = newName;
+    nameElement.classList.remove('hidden');
+    if (editButton) editButton.classList.remove('hidden');
+    editContainer.classList.add('hidden');
+    
+    if (currentBoardId) {
+        updateBoardName(currentBoardId, newName);
+        renderBoardsDrawer();
+    }
+}
+
+function renderBoardsDrawer() {
+    const boards = loadAllBoards();
+    const drawer = document.getElementById('boards-drawer');
+    const list = document.getElementById('boards-list');
+    const drawerTab = document.getElementById('boards-drawer-tab');
+    
+    if (!drawer || !list) return;
+    
+    if (boards.length === 0) {
+        drawer.classList.add('hidden');
+        return;
+    }
+    
+    drawer.classList.remove('hidden');
+    list.innerHTML = '';
+    
+    // Set up drawer tab handler if not already set
+    if (drawerTab && !drawerTab.hasAttribute('data-handler-set')) {
+        drawerTab.addEventListener('click', toggleDrawer);
+        drawerTab.setAttribute('data-handler-set', 'true');
+    }
+    
+    // Add saved boards first
+    boards.forEach(board => {
+        const item = document.createElement('div');
+        item.className = 'board-list-item';
+        if (board.id === currentBoardId) {
+            item.classList.add('active');
+        }
+        item.textContent = board.name;
+        item.addEventListener('click', () => {
+            switchToBoard(board.id);
+            // Close drawer after selecting
+            drawer.classList.remove('open');
+        });
+        list.appendChild(item);
+    });
+    
+    // Add "New Card" item at the bottom (subdued)
+    const newCardItem = document.createElement('div');
+    newCardItem.className = 'board-list-item board-list-item-new';
+    newCardItem.textContent = '+ New Card';
+    newCardItem.addEventListener('click', () => {
+        generateBingoCard();
+        // Close drawer after selecting
+        drawer.classList.remove('open');
+    });
+    list.appendChild(newCardItem);
+}
+
+function toggleDrawer() {
+    const drawer = document.getElementById('boards-drawer');
+    if (drawer) {
+        drawer.classList.toggle('open');
+    }
+}
+
+function updateUIForBoardState() {
+    const saveButton = document.getElementById('save-board-button');
+    const deleteButton = document.getElementById('delete-board-button');
+    const generateButton = document.getElementById('generate-bingo-button');
+    
+    if (isNewBoard) {
+        // New board: show save, hide delete, show generate (for rerolling)
+        if (saveButton) saveButton.classList.remove('hidden');
+        if (deleteButton) deleteButton.classList.add('hidden');
+        if (generateButton) generateButton.classList.remove('hidden');
+    } else {
+        // Saved board: hide save, show delete, hide generate
+        if (saveButton) saveButton.classList.add('hidden');
+        if (deleteButton) deleteButton.classList.remove('hidden');
+        if (generateButton) generateButton.classList.add('hidden');
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -144,11 +381,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const generateButton = document.getElementById('generate-bingo-button');
         generateButton.addEventListener('click', generateBingoCard);
         
-        // Try to load saved state
-        const loaded = loadBingoCardFromState();
-        if (!loaded) {
-            // No saved state, show empty state (button is already visible)
-        }
+        // Initialize app (load boards or show empty state)
+        initializeApp();
     } catch (error) {
         console.error('Error loading champions data:', error);
     }
@@ -235,25 +469,13 @@ function renderBingoCard(championPairs, useSavedState = false) {
         return;
     }
     
-    // Load or initialize state
-    if (useSavedState) {
-        const savedState = loadBingoState();
-        if (savedState && 
-            savedState.champions && 
-            savedState.champions.length === 25 &&
-            JSON.stringify(savedState.champions) === JSON.stringify(championPairs)) {
-            // Champions match, use saved state
-            bingoState = savedState;
-        } else {
-            // Champions don't match or no saved state, initialize new state
-            bingoState.champions = championPairs;
+    // State is already set in bingoState before calling renderBingoCard
+    // Just ensure champions match
+    if (JSON.stringify(bingoState.champions) !== JSON.stringify(championPairs)) {
+        bingoState.champions = championPairs;
+        if (!useSavedState) {
             bingoState.tiles = {};
         }
-    } else {
-        // New card - reset state
-        resetBingoState();
-        bingoState.champions = championPairs;
-        bingoState.tiles = {};
     }
     
     // Get grid container
@@ -377,18 +599,13 @@ function renderBingoCard(championPairs, useSavedState = false) {
         updateTileUI(index);
     });
     
-    // Save initial state
-    saveBingoState(bingoState);
+    // Don't auto-save here - only save when explicitly requested or when tile is updated (for saved boards)
     
     // Update bingo overlays after all tiles are rendered
     updateBingoOverlays();
     
     // Toggle states
     gridContainer.classList.remove('hidden');
-    
-    // Update button text for bingo state
-    const generateButton = document.getElementById('generate-bingo-button');
-    generateButton.textContent = 'New Bingo Card';
 }
 
 // Generate new bingo card with 25 pairs of random champions
@@ -406,38 +623,86 @@ function generateBingoCard() {
         championPairs.push([selectedChampions[i * 2], selectedChampions[i * 2 + 1]]);
     }
     
-    // Render with new state (not using saved state)
+    // Set up for new board
+    currentBoardId = null;
+    isNewBoard = true;
+    bingoState = {
+        champions: championPairs,
+        tiles: {}
+    };
+    
+    // Render the card
     renderBingoCard(championPairs, false);
+    
+    // Display board name
+    renderBoardName('Unnamed Card');
+    
+    // Update UI
+    updateUIForBoardState();
     
     // Scroll to top of grid for better UX
     const gridContainer = document.getElementById('bingo-grid');
     gridContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Load bingo card from saved state
-function loadBingoCardFromState() {
-    const savedState = loadBingoState();
-    if (savedState && 
-        savedState.champions && 
-        savedState.champions.length === 25) {
-        // Check if it's pairs format (new) or single champions (old - will be migrated)
-        const isPairsFormat = Array.isArray(savedState.champions[0]) && savedState.champions[0].length === 2;
-        
-        if (isPairsFormat) {
-            // Validate all champions in pairs exist in championsData
-            const allChampionsValid = savedState.champions.every(pair => 
-                Array.isArray(pair) && 
-                pair.length === 2 &&
-                pair.every(champ => championKeys.includes(champ) && championsData[champ])
-            );
-            
-            if (allChampionsValid) {
-                // Render with saved state
-                renderBingoCard(savedState.champions, true);
-                return true;
-            }
-        }
-        // If not pairs format, migration will handle it
+// Initialize the app on page load
+function initializeApp() {
+    const boards = loadAllBoards();
+    
+    if (boards.length > 0) {
+        // Boards exist: show drawer and load first board
+        renderBoardsDrawer();
+        const firstBoard = boards[0];
+        switchToBoard(firstBoard.id);
+    } else {
+        // No boards: show empty state, hide drawer
+        document.getElementById('boards-drawer').classList.add('hidden');
+        document.getElementById('bingo-grid').classList.add('hidden');
+        document.getElementById('board-name-container').classList.add('hidden');
+        document.getElementById('save-board-button').classList.add('hidden');
+        document.getElementById('delete-board-button').classList.add('hidden');
+        document.getElementById('generate-bingo-button').classList.remove('hidden');
     }
-    return false;
+    
+    // Set up event handlers
+    const saveButton = document.getElementById('save-board-button');
+    if (saveButton) {
+        saveButton.addEventListener('click', saveCurrentBoard);
+    }
+    
+    const deleteButton = document.getElementById('delete-board-button');
+    if (deleteButton) {
+        deleteButton.addEventListener('click', deleteCurrentBoard);
+    }
+    
+    const editButton = document.getElementById('edit-board-name-button');
+    if (editButton) {
+        editButton.addEventListener('click', showBoardNameEditor);
+    }
+    
+    const nameInput = document.getElementById('board-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('blur', saveBoardName);
+        nameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                saveBoardName();
+            } else if (e.key === 'Escape') {
+                const nameElement = document.getElementById('board-name');
+                const editButton = document.getElementById('edit-board-name-button');
+                const editContainer = document.getElementById('board-name-edit-container');
+                if (nameElement && editContainer) {
+                    // Restore original name without saving
+                    inputElement.value = nameElement.textContent;
+                    nameElement.classList.remove('hidden');
+                    if (editButton) editButton.classList.remove('hidden');
+                    editContainer.classList.add('hidden');
+                }
+            }
+        });
+    }
+    
+    const saveNameButton = document.getElementById('save-board-name-button');
+    if (saveNameButton) {
+        saveNameButton.addEventListener('click', saveBoardName);
+    }
 }

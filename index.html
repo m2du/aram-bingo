@@ -15,11 +15,31 @@
     </header>
     
     <main>
+        <div id="board-name-container" class="hidden">
+            <h2 id="board-name"></h2>
+            <button id="edit-board-name-button" title="Edit board name">✎</button>
+            <div id="board-name-edit-container" class="hidden">
+                <input id="board-name-input" type="text">
+            </div>
+        </div>
+        
         <div id="bingo-grid" class="hidden"></div>
         
-        <button id="generate-bingo-button">Generate Bingo Card</button>
+        <div>
+            <button id="generate-bingo-button">Generate Bingo Card</button>
+            <button id="save-board-button" class="hidden">Save</button>
+        </div>
+        <button id="delete-board-button" class="hidden">Delete</button>
     </main>
     
+    <div id="boards-drawer" class="hidden">
+        <button id="boards-drawer-tab">Saves</button>
+        <div id="boards-drawer-content">
+            <div id="boards-list"></div>
+        </div>
+    </div>
+    
+    <script src="src/utils.js"></script>
     <script src="src/save_load.js"></script>
     <script src="src/main.js"></script>
 </body>

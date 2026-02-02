@@ -1,9 +1,10 @@
 // Version constant for save format
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 const MIGRATION_FUNCTIONS = [
   updateToV0,
-  updateToV1
+  updateToV1,
+  updateToV2
 ]
 
 function updateToV0(data) {
@@ -100,6 +101,24 @@ function updateToV1(data) {
   return { version: 1, value: migratedState };
 }
 
+function updateToV2(data) {
+  // Migrate from version 1 (direct state) to version 2 (wrapped with id and name)
+  if (data.version !== 1) {
+    return data;
+  }
+  
+  const state = data.value;
+  
+  // Wrap the state in the new format with id and name
+  const migratedValue = {
+    id: generateId(),
+    name: 'Unnamed Card',
+    state: state
+  };
+  
+  return { version: 2, value: [migratedValue] };
+}
+
 // Migration function to convert old format to current format
 function migrateSaveData(data) {
     // First wrap in version 0 if not versioned
@@ -151,4 +170,124 @@ function loadBingoState() {
         console.error('Error loading bingo state:', error);
     }
     return null;
+}
+
+// Load all boards from localStorage (handles backward compatibility)
+function loadAllBoards() {
+    try {
+        const saved = localStorage.getItem('aram-bingo-state');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            const originalVersion = parsed.version;
+            
+            // Migrate if needed
+            const migrated = migrateSaveData(parsed);
+            
+            // If migration occurred (version changed or was unversioned), save the migrated data back
+            const needsSave = originalVersion === undefined || originalVersion !== migrated.version || migrated.version < CURRENT_VERSION;
+            
+            if (needsSave) {
+                // Normalize to array format
+                let boardsArray = [];
+                if (Array.isArray(migrated.value)) {
+                    boardsArray = migrated.value;
+                } else if (migrated.value && typeof migrated.value === 'object') {
+                    // Single board object, wrap in array
+                    boardsArray = [migrated.value];
+                }
+                saveAllBoards(boardsArray);
+                return boardsArray;
+            }
+            
+            // Handle backward compatibility: if value is a single object (old v2), wrap it in array
+            if (migrated.value && !Array.isArray(migrated.value)) {
+                // Single board object, wrap in array
+                return [migrated.value];
+            }
+            
+            // Already an array (new v2 format)
+            return Array.isArray(migrated.value) ? migrated.value : [];
+        }
+    } catch (error) {
+        console.error('Error loading all boards:', error);
+    }
+    return [];
+}
+
+// Save all boards to localStorage as version 2 format
+function saveAllBoards(boards) {
+    try {
+        if (!Array.isArray(boards)) {
+            console.error('saveAllBoards: boards must be an array');
+            return;
+        }
+        
+        const versionedData = {
+            version: 2,
+            value: boards
+        };
+        localStorage.setItem('aram-bingo-state', JSON.stringify(versionedData));
+    } catch (error) {
+        console.error('Error saving all boards:', error);
+    }
+}
+
+// Save or update a single board in the boards array
+function saveBingoBoard(board) {
+    try {
+        if (!board || !board.id) {
+            console.error('saveBingoBoard: board must have an id');
+            return;
+        }
+        
+        const boards = loadAllBoards();
+        const existingIndex = boards.findIndex(b => b.id === board.id);
+        
+        if (existingIndex >= 0) {
+            // Update existing board
+            boards[existingIndex] = board;
+        } else {
+            // Add new board
+            boards.push(board);
+        }
+        
+        saveAllBoards(boards);
+    } catch (error) {
+        console.error('Error saving bingo board:', error);
+    }
+}
+
+// Delete a board by ID
+function deleteBingoBoard(boardId) {
+    try {
+        const boards = loadAllBoards();
+        const filteredBoards = boards.filter(b => b.id !== boardId);
+        saveAllBoards(filteredBoards);
+    } catch (error) {
+        console.error('Error deleting bingo board:', error);
+    }
+}
+
+// Load a specific board by ID
+function loadBingoBoard(boardId) {
+    try {
+        const boards = loadAllBoards();
+        return boards.find(b => b.id === boardId) || null;
+    } catch (error) {
+        console.error('Error loading bingo board:', error);
+        return null;
+    }
+}
+
+// Update a board's name
+function updateBoardName(boardId, newName) {
+    try {
+        const board = loadBingoBoard(boardId);
+        if (board) {
+            board.name = newName;
+            saveBingoBoard(board);
+        }
+    } catch (error) {
+        console.error('Error updating board name:', error);
+    }
 }
